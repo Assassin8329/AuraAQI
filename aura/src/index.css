@@ -1,0 +1,132 @@
+@import "tailwindcss";
+
+:root {
+  --background: 40 33% 98%;
+  --foreground: 150 15% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 150 15% 12%;
+  --muted: 40 20% 94%;
+  --muted-foreground: 150 8% 40%;
+  --border: 40 15% 88%;
+  --input: 40 15% 88%;
+  --ring: 152 35% 35%;
+  --primary: 152 35% 27%;
+  --primary-foreground: 40 33% 98%;
+  --secondary: 40 25% 93%;
+  --secondary-foreground: 150 15% 12%;
+  --destructive: 0 70% 48%;
+  --destructive-foreground: 0 0% 100%;
+  --accent: 80 40% 88%;
+  --accent-foreground: 150 20% 15%;
+  --radius: 0.75rem;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --font-sans: var(--font-sans);
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-feature-settings: "cv11", "ss01";
+  }
+}
+
+@layer utilities {
+  .animate-aura-in {
+    animation: aura-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .animate-aura-sweep {
+    animation: aura-sweep 2.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  }
+
+  .animate-aura-ring {
+    animation: aura-ring 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .animate-aura-pulse {
+    animation: aura-pulse 2.6s ease-in-out infinite;
+  }
+}
+
+@keyframes aura-in {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes aura-sweep {
+  0% {
+    stroke-dashoffset: 264;
+  }
+  100% {
+    stroke-dashoffset: 120;
+  }
+}
+
+@keyframes aura-ring {
+  0% {
+    transform: scale(0.9);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes aura-pulse {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
