@@ -217,7 +217,7 @@ function validateCards(value: unknown): AdviceCard[] {
       kicker: String(card.kicker).slice(0, 100),
       body,
       detail,
-      tone,
+      tone: tone as AdviceCard["tone"],
     };
   });
 }
@@ -300,8 +300,8 @@ function sanitizeForPrompt(input: string): string {
 function sanitizeProfile(profile: UserProfile): UserProfile {
   return {
     ...profile,
-    name: profile.name.trim().slice(0, MAX_NAME_LEN) || "User",
-    location: profile.location.trim().slice(0, MAX_LOCATION_LEN) || "Unknown",
+    name: sanitizeForPrompt(profile.name).slice(0, MAX_NAME_LEN) || "User",
+    location: sanitizeForPrompt(profile.location) || "Unknown",
   };
 }
 
@@ -330,7 +330,7 @@ async function generateWithAI(
   });
 
   if (!response.ok) {
-    const text = await response.text().catch(() => "");
+    await response.text().catch(() => "");
     // Don't leak raw API errors — show a clean message
     throw new Error("AI generation failed. Please check your provider settings and try again.");
   }
