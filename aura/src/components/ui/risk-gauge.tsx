@@ -11,11 +11,11 @@ const BANDS: { key: string; label: string; color: string; min: number; max: numb
 const CX = 100;
 const CY = 100;
 const R = 70;
-const START_DEG = 225;
-const END_DEG = 315;
+const START_DEG = 135;
+const SWEEP_DEG = 270;
 
 function pointOnArc(deg: number, radius: number) {
-  const rad = ((deg - 90) * Math.PI) / 180;
+  const rad = (deg * Math.PI) / 180;
   return { x: CX + radius * Math.cos(rad), y: CY + radius * Math.sin(rad) };
 }
 
@@ -29,16 +29,15 @@ export function RiskGauge({
   const band = BANDS.find((b) => aqi >= b.min && aqi <= b.max) ?? BANDS[4];
 
   const start = pointOnArc(START_DEG, R);
-  const end = pointOnArc(END_DEG, R);
+  const end = pointOnArc(START_DEG + SWEEP_DEG, R);
   const arcPath = `M ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${R} ${R} 0 1 1 ${end.x.toFixed(2)} ${end.y.toFixed(2)}`;
-  const arcLength = (R * 2 * Math.PI) / 360 * (END_DEG - START_DEG);
-  const progress = Math.max(0.02, Math.min(1, aqi / 300));
-  const fillLength = arcLength * progress;
+  const progress = Math.max(0.03, Math.min(1, aqi / 300));
+  const fillPercent = progress * 100;
 
-  // Tick marks along the arc
+  // Tick marks along the arc at 25%, 50%, 75%
   const ticks = [25, 50, 75].map((pct) => {
-    const deg = START_DEG + (END_DEG - START_DEG) * (pct / 100);
-    const inner = pointOnArc(deg, R - 10);
+    const deg = START_DEG + SWEEP_DEG * (pct / 100);
+    const inner = pointOnArc(deg, R - 9);
     const outer = pointOnArc(deg, R);
     return (
       <line
@@ -65,6 +64,7 @@ export function RiskGauge({
           stroke="rgba(22, 32, 12, 0.08)"
           strokeWidth={16}
           strokeLinecap="round"
+          pathLength={100}
         />
         {/* Fill */}
         <path
@@ -74,30 +74,17 @@ export function RiskGauge({
           strokeWidth={16}
           strokeLinecap="round"
           pathLength={100}
-          strokeDasharray={`${fillLength} 100`}
-          className="animate-aura-sweep"
-        />
-        {/* Highlight sweep */}
-        <path
-          d={arcPath}
-          fill="none"
-          stroke="#FFFFFF"
-          strokeWidth={5}
-          strokeLinecap="round"
-          pathLength={100}
-          strokeDasharray={`${Math.max(6, fillLength * 0.12)} 100`}
-          className="animate-aura-sweep"
-          opacity="0.9"
+          strokeDasharray={`${fillPercent.toFixed(1)} 100`}
         />
         {/* Ticks */}
         {ticks}
       </svg>
 
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-[2.75rem] font-semibold leading-none tracking-tight text-foreground">
+        <span className="text-[1.5rem] font-semibold leading-none tracking-tight text-foreground">
           {aqi}
         </span>
-        <span className="mt-1 text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+        <span className="mt-0.5 max-w-[4.25rem] text-[0.5625rem] font-semibold uppercase leading-[1.15] tracking-[0.04em] text-muted-foreground text-center">
           {band.label}
         </span>
       </div>

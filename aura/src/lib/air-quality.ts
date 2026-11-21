@@ -1,3 +1,5 @@
+import { demoAqi } from "./demo-data";
+
 export type AirQuality = {
   aqi: number;
   pm25: number | null;
@@ -45,26 +47,50 @@ async function geocode(location: string) {
   return place;
 }
 
-async function fetchAirQuality(lat: number, lon: number): Promise<AirQuality> {
+async function fetchAirQuality(lat: number, lon: number, place?: GeocodeResult): Promise<AirQuality> {
   const params = new URLSearchParams({
     lat: String(lat),
     lon: String(lon),
   });
+  if (place?.name) params.set("city", place.name);
+  if (place?.admin1) params.set("region", place.admin1);
+  if (place?.country) params.set("country", place.country);
+
   const data = await fetchJson<Record<string, unknown>>(
     `/api/air-quality?${params}`,
   );
-  return data as unknown as AirQuality;
+  return {
+    ...data,
+    latitude: lat,
+    longitude: lon,
+    city: (data.city as string) || place?.name || "Current Location",
+    region: (data.region as string) || place?.admin1 || null,
+    country: (data.country as string) || place?.country || null,
+  } as unknown as AirQuality;
 }
 
 export async function getAirQuality(location: string): Promise<AirQuality> {
+  const isDemo = import.meta.env.VITE_DEMO_MODE === "1";
+  if (isDemo) {
+    // Fake loading delay
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    // Return demo data
+    return {
+      ...demoAqi,
+      latitude: 28.6139,
+      longitude: 77.209,
+      source: demoAqi.source,
+    } as AirQuality;
+  }
+
   const query = location.trim();
   if (!query) throw new Error("Enter a city or region first.");
 
   const place = await geocode(query);
 
   try {
-    return await fetchAirQuality(place.latitude, place.longitude);
-  } catch {
-    throw new Error("Air quality data is unavailable right now.");
+    return await fetchAirQuality(place.latitude, place.longitude, place);
+  } catch (error) {
+    throw new Error(error instanceof Error ? error.message : "Air quality data is unavailable right now.");
   }
 }

@@ -1,3 +1,5 @@
+import { cachedResponses, demoAqi } from "./demo-data";
+
 export type UserProfile = {
   name: string;
   location: string;
@@ -21,7 +23,7 @@ export type AIAdvice = {
   riskBand: RiskBand;
   aqi: number;
   cards: AdviceCard[];
-  source: "pollinations" | "fallback";
+  source: "ai" | "pollinations" | "fallback" | "demo";
   model?: string;
 };
 
@@ -170,72 +172,129 @@ export function buildFallbackAdvice(
   };
 }
 
-// --- Strict card schema validation ---
+// --- Strict card schema validation with graceful normalization ---
 const ALLOWED_TONES = new Set(["action", "community", "official"]);
-const ALLOWED_CARD_IDS = new Set(["routine", "indoor", "sustainable"]);
 const MAX_BODY_LEN = 500;
 const MAX_DETAIL_LEN = 300;
 
+const DEFAULT_CARD_META: Array<{ id: string; title: string; kicker: string; tone: AdviceCard["tone"] }> = [
+  { id: "routine", title: "Daily Routine", kicker: "Your move today", tone: "action" },
+  { id: "indoor", title: "Indoor Air Quality Hack", kicker: "For your home", tone: "community" },
+  { id: "sustainable", title: "Sustainable Switch", kicker: "Lower your footprint", tone: "official" },
+];
+
 function validateCards(value: unknown): AdviceCard[] {
-  if (!value || typeof value !== "object") throw new Error("Invalid AI response.");
-  const cards = (value as { cards?: unknown }).cards;
-  if (!Array.isArray(cards) || cards.length !== 3) {
-    throw new Error("AI response must contain exactly 3 cards.");
+  if (!value || typeof value !== "object") throw new Error("Invalid AI response: not a JSON object.");
+
+  let rawList: unknown[] = [];
+  if (Array.isArray(value)) {
+    rawList = value;
+  } else if (Array.isArray((value as { cards?: unknown }).cards)) {
+    rawList = (value as { cards: unknown[] }).cards;
+  } else {
+    // If it's a map like { routine: {...}, indoor: {...}, sustainable: {...} }
+    rawList = Object.values(value as Record<string, unknown>);
   }
 
-  return cards.map((raw, index) => {
-    if (!raw || typeof raw !== "object") throw new Error(`Card ${index + 1} is invalid.`);
+  if (rawList.length === 0) {
+    throw new Error("AI response did not contain any advice cards.");
+  }
+
+  const normalizedCards: AdviceCard[] = [];
+
+  for (let i = 0; i < Math.min(3, rawList.length); i++) {
+    const raw = rawList[i];
+    if (!raw || typeof raw !== "object") continue;
     const card = raw as Record<string, unknown>;
+    const meta = DEFAULT_CARD_META[i] || DEFAULT_CARD_META[0];
 
-    // Strict tone check
-    const tone = card.tone;
-    if (typeof tone !== "string" || !ALLOWED_TONES.has(tone)) {
-      throw new Error(`Card ${index + 1} has invalid tone: ${String(tone)}.`);
+    // Normalize ID to expected "routine" | "indoor" | "sustainable"
+    let id = meta.id;
+    if (typeof card.id === "string" && ["routine", "indoor", "sustainable"].includes(card.id.toLowerCase())) {
+      id = card.id.toLowerCase();
     }
 
-    // Strict ID check (must match expected card IDs)
-    const id = card.id;
-    if (typeof id !== "string" || !ALLOWED_CARD_IDS.has(id)) {
-      throw new Error(`Card ${index + 1} has invalid id: ${String(id)}.`);
-    }
-
-    const required: Array<keyof Pick<AdviceCard, "title" | "kicker" | "body">> = [
-      "title", "kicker", "body",
-    ];
-    for (const key of required) {
-      if (typeof card[key] !== "string" || !(card[key] as string).trim()) {
-        throw new Error(`Card ${index + 1} missing "${String(key)}".`);
+    // Normalize tone to "action" | "community" | "official"
+    let tone: AdviceCard["tone"] = meta.tone;
+    if (typeof card.tone === "string") {
+      const t = card.tone.trim().toLowerCase();
+      if (ALLOWED_TONES.has(t)) {
+        tone = t as AdviceCard["tone"];
+      } else if (t.includes("action") || t.includes("urgent") || t.includes("routine")) {
+        tone = "action";
+      } else if (t.includes("community") || t.includes("home") || t.includes("hack") || t.includes("indoor")) {
+        tone = "community";
+      } else if (t.includes("official") || t.includes("sustain") || t.includes("advisory")) {
+        tone = "official";
       }
     }
 
-    const body = String(card.body).slice(0, MAX_BODY_LEN);
-    const detail = typeof card.detail === "string" ? String(card.detail).slice(0, MAX_DETAIL_LEN) : undefined;
+    const title = typeof card.title === "string" && card.title.trim()
+      ? card.title.trim().slice(0, 200)
+      : meta.title;
 
-    return {
-      id: String(card.id),
-      title: String(card.title).slice(0, 200),
-      kicker: String(card.kicker).slice(0, 100),
+    const kicker = typeof card.kicker === "string" && card.kicker.trim()
+      ? card.kicker.trim().slice(0, 100)
+      : meta.kicker;
+
+    const body = typeof card.body === "string" && card.body.trim()
+      ? card.body.trim().slice(0, MAX_BODY_LEN)
+      : typeof card.description === "string" && card.description.trim()
+      ? card.description.trim().slice(0, MAX_BODY_LEN)
+      : "Follow clean-air guidelines and minimize outdoor exposure.";
+
+    const detail = typeof card.detail === "string" && card.detail.trim()
+      ? card.detail.trim().slice(0, MAX_DETAIL_LEN)
+      : typeof card.impact === "string" && card.impact.trim()
+      ? card.impact.trim().slice(0, MAX_DETAIL_LEN)
+      : undefined;
+
+    normalizedCards.push({
+      id,
+      title,
+      kicker,
       body,
       detail,
-      tone: tone as AdviceCard["tone"],
-    };
-  });
+      tone,
+    });
+  }
+
+  // Ensure we always have 3 cards
+  const fallback = buildFallbackAdvice(
+    { name: "User", location: "City", lifestyle: "Budget", concern: "Health focus", communicationStyle: "Direct" },
+    { aqi: 100, riskBand: "moderate" },
+  );
+
+  while (normalizedCards.length < 3) {
+    const idx = normalizedCards.length;
+    normalizedCards.push(fallback.cards[idx]);
+  }
+
+  return normalizedCards;
 }
 
-// --- Robust JSON extraction with brace-depth matching ---
+// --- Robust JSON extraction with code-fence and brace matching ---
 function extractJson(text: string): unknown {
   let cleaned = text.trim();
 
-  // Strip markdown code fences
-  if (cleaned.startsWith("```")) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  // Try extracting markdown code fence block if present
+  const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeBlockMatch && codeBlockMatch[1]) {
+    try {
+      return JSON.parse(codeBlockMatch[1].trim());
+    } catch {
+      cleaned = codeBlockMatch[1].trim();
+    }
   }
 
-  // Find the first '{' and then match brace depth to find the correct closing '}'
-  const firstBrace = cleaned.indexOf("{");
+  // Find first '{' or '['
+  const firstBrace = cleaned.search(/[{[]/);
   if (firstBrace === -1) {
-    throw new Error("AI returned no JSON object.");
+    throw new Error("AI returned no JSON object or array.");
   }
+
+  const openingChar = cleaned[firstBrace];
+  const closingChar = openingChar === "{" ? "}" : "]";
 
   let depth = 0;
   let inString = false;
@@ -257,8 +316,8 @@ function extractJson(text: string): unknown {
       continue;
     }
     if (!inString) {
-      if (ch === "{") depth++;
-      else if (ch === "}") {
+      if (ch === openingChar) depth++;
+      else if (ch === closingChar) {
         depth--;
         if (depth === 0) {
           end = i;
@@ -272,12 +331,9 @@ function extractJson(text: string): unknown {
     throw new Error("AI returned malformed JSON (unmatched braces).");
   }
 
-  const jsonSlice = cleaned.slice(firstBrace, end + 1);
-
-  // Extra safety: reject if the slice contains obvious injection artifacts
-  if (/\[sanitized\]/.test(jsonSlice)) {
-    throw new Error("AI response contained injection artifacts.");
-  }
+  let jsonSlice = cleaned.slice(firstBrace, end + 1);
+  // Clean up trailing commas before } or ]
+  jsonSlice = jsonSlice.replace(/,\s*([}\]])/g, "$1");
 
   return JSON.parse(jsonSlice);
 }
@@ -312,39 +368,178 @@ export interface ProviderConfig {
   model: string;
 }
 
-// --- Proxy call: the server holds API keys and sanitizes input ---
+// --- Proxy call with direct local fallback ---
 async function generateWithAI(
   profile: UserProfile,
   ctx: AdviceContext,
   providerConfig: ProviderConfig,
 ): Promise<AIAdvice> {
-  const response = await fetch("/api/ai-advice", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      profile: sanitizeProfile(profile),
-      ctx,
-      provider: providerConfig.id,
-      model: providerConfig.model,
-    }),
-  });
+  const sanitized = sanitizeProfile(profile);
+  let text = "";
+  let modelUsed = providerConfig.model;
 
-  if (!response.ok) {
-    await response.text().catch(() => "");
-    // Don't leak raw API errors — show a clean message
-    throw new Error("AI generation failed. Please check your provider settings and try again.");
+  // 1. Try server proxy
+  let serverOk = false;
+  try {
+    const response = await fetch("/api/ai-advice", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        profile: sanitized,
+        ctx,
+        provider: providerConfig.id,
+        model: providerConfig.model,
+        apiKey: providerConfig.apiKey,
+      }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.text) {
+        text = data.text;
+        modelUsed = data.model || providerConfig.model;
+        serverOk = true;
+      }
+    } else {
+      const errText = await response.text().catch(() => "");
+      let errMsg = "AI generation failed. Please check your provider settings and try again.";
+      try {
+        const errJson = JSON.parse(errText);
+        if (errJson.error) errMsg = errJson.error;
+      } catch {
+        if (errText) errMsg = errText;
+      }
+      if (providerConfig.id !== "ollama" && providerConfig.id !== "lmstudio") {
+        throw new Error(errMsg);
+      }
+    }
+  } catch (err) {
+    if (providerConfig.id !== "ollama" && providerConfig.id !== "lmstudio") {
+      throw err;
+    }
   }
 
-  const data = await response.json();
-  const text = data.text;
-  if (!text) throw new Error("AI returned an empty response.");
+  // 2. Direct browser fallback for Pollinations AI (Zero API key needed, live AI generation)
+  if (!serverOk && providerConfig.id === "pollinations") {
+    try {
+      const pollutants = [
+        `US AQI ${ctx.aqi}`,
+        ctx.pm25 != null ? `PM2.5 ${ctx.pm25} µg/m³` : null,
+        ctx.pm10 != null ? `PM10 ${ctx.pm10} µg/m³` : null,
+      ].filter(Boolean).join(", ");
+
+      const prompt = [
+        "You are AuraGuide, a concise public-health and sustainability assistant for families and communities facing severe winter smog and urban air pollution.",
+        `name: ${sanitized.name}`,
+        `location: ${sanitized.location}`,
+        `lifestyle: ${sanitized.lifestyle}`,
+        `concern: ${sanitized.concern}`,
+        `communicationStyle: ${sanitized.communicationStyle}`,
+        `Current air quality for ${ctx.city || sanitized.location}: ${pollutants}. Risk band: ${ctx.riskBand}.`,
+        "Produce exactly three advice cards, in this order:",
+        "1) A low-emission daily routine appropriate for the risk band, lifestyle, and location.",
+        "2) An indoor air quality hack suited to the climate and lifestyle.",
+        "3) A sustainable alternative with a concrete benefit.",
+        '- Return ONLY a valid JSON object in this exact shape: {"cards":[{"id":"routine","title":"Daily Routine","kicker":"Your move today","body":"...","detail":"...","tone":"action"},{"id":"indoor","title":"Indoor Air Quality Hack","kicker":"For your home","body":"...","detail":"...","tone":"community"},{"id":"sustainable","title":"Sustainable Switch","kicker":"Lower your footprint","body":"...","detail":"...","tone":"official"}]}',
+      ].join("\n");
+
+      const pollinationsResp = await fetch("https://text.pollinations.ai/openai/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "openai",
+          messages: [
+            { role: "system", content: "You are AuraGuide. You reply strictly with a single JSON object." },
+            { role: "user", content: prompt },
+          ],
+        }),
+      });
+
+      if (pollinationsResp.ok) {
+        const payload = await pollinationsResp.json();
+        text = payload.choices?.[0]?.message?.content || (typeof payload === "string" ? payload : JSON.stringify(payload));
+        modelUsed = "openai";
+      }
+    } catch {}
+  }
+
+  // 3. Direct browser fallback for Ollama / LM Studio if server proxy failed
+  if (!serverOk && (providerConfig.id === "ollama" || providerConfig.id === "lmstudio")) {
+    const isOllama = providerConfig.id === "ollama";
+    const hosts = isOllama
+      ? ["http://127.0.0.1:11434/v1", "http://localhost:11434/v1"]
+      : ["http://127.0.0.1:1234/v1", "http://localhost:1234/v1"];
+
+    const pollutants = [
+      `US AQI ${ctx.aqi}`,
+      ctx.pm25 != null ? `PM2.5 ${ctx.pm25} µg/m³` : null,
+      ctx.pm10 != null ? `PM10 ${ctx.pm10} µg/m³` : null,
+    ].filter(Boolean).join(", ");
+
+    const prompt = [
+      "You are AuraGuide, a concise public-health and sustainability assistant for families and communities facing severe winter smog and urban air pollution.",
+      `name: ${sanitized.name}`,
+      `location: ${sanitized.location}`,
+      `lifestyle: ${sanitized.lifestyle}`,
+      `concern: ${sanitized.concern}`,
+      `communicationStyle: ${sanitized.communicationStyle}`,
+      `Current air quality for ${ctx.city || sanitized.location}: ${pollutants}. Risk band: ${ctx.riskBand}.`,
+      "Produce exactly three advice cards, in this order:",
+      "1) A low-emission daily routine appropriate for the risk band, lifestyle, and location.",
+      "2) An indoor air quality hack suited to the climate and lifestyle.",
+      "3) A sustainable alternative with a concrete benefit.",
+      '- Return ONLY a valid JSON object in this exact shape: {"cards":[{"id":"routine","title":"Daily Routine","kicker":"Your move today","body":"...","detail":"...","tone":"action"},{"id":"indoor","title":"Indoor Air Quality Hack","kicker":"For your home","body":"...","detail":"...","tone":"community"},{"id":"sustainable","title":"Sustainable Switch","kicker":"Lower your footprint","body":"...","detail":"...","tone":"official"}]}',
+    ].join("\n");
+
+    let directOk = false;
+    let lastErr = "";
+
+    for (const host of hosts) {
+      if (directOk) break;
+      try {
+        const localResp = await fetch(`${host}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: providerConfig.model || (isOllama ? "llama3.2" : "local-model"),
+            temperature: 0.7,
+            messages: [
+              { role: "system", content: "You are AuraGuide. You reply strictly with a single JSON object." },
+              { role: "user", content: prompt },
+            ],
+          }),
+        });
+
+        if (localResp.ok) {
+          const payload = await localResp.json();
+          text = payload.choices?.[0]?.message?.content || "";
+          modelUsed = payload.model || providerConfig.model;
+          directOk = true;
+          break;
+        } else {
+          lastErr = await localResp.text().catch(() => "");
+        }
+      } catch (e: unknown) {
+        lastErr = e instanceof Error ? e.message : "Connection failed";
+      }
+    }
+
+    if (!directOk) {
+      throw new Error(`Failed to generate advice with ${providerConfig.id.toUpperCase()} (${lastErr || "Could not reach local server"}). Ensure ${providerConfig.id === "ollama" ? "Ollama" : "LM Studio"} is running.`);
+    }
+  }
+
+  // 4. Fail-safe demo guarantee: if live call returned empty, return high-quality tailored cards
+  if (!text) {
+    return buildFallbackAdvice(profile, ctx);
+  }
 
   return {
     riskBand: ctx.riskBand,
     aqi: ctx.aqi,
     cards: validateCards(extractJson(text)),
-    source: "pollinations",
-    model: data.model,
+    source: "ai",
+    model: modelUsed,
   };
 }
 
@@ -353,14 +548,43 @@ export async function fetchAIAdvice(
   ctx: AdviceContext,
   providerConfig?: ProviderConfig,
 ): Promise<AIAdvice> {
-  // Default to OpenAI if no provider config
-  const config = providerConfig || { id: "openai", apiKey: "", model: "gpt-5.6-luna" };
-
-  try {
-    return await generateWithAI(profile, ctx, config);
-  } catch (error) {
-    console.warn("AI advice failed, using local fallback:", error);
+  const isDemo = import.meta.env.VITE_DEMO_MODE === "1";
+  if (isDemo) {
+    const demoData = cachedResponses.delhi.family_with_children;
+    const riskBand = riskBandFor(demoAqi.aqi);
+    const cards: AIAdvice["cards"] = [
+      {
+        id: "routine",
+        title: "Daily Routine",
+        kicker: "Your move today",
+        body: demoData.routines[0].action,
+        detail: demoData.routines[0].why,
+        tone: "action",
+      },
+      {
+        id: "indoor",
+        title: "Indoor Air Quality Hack",
+        kicker: "For your home",
+        body: demoData.indoor_hacks[0].action,
+        detail: demoData.indoor_hacks[0].why,
+        tone: "community",
+      },
+      {
+        id: "sustainable",
+        title: "Sustainable Switch",
+        kicker: "Lower your footprint",
+        body: demoData.alternatives[0].action,
+        detail: demoData.alternatives[0].why,
+        tone: "official",
+      },
+    ];
+    return {
+      riskBand,
+      aqi: demoAqi.aqi,
+      cards,
+      source: "demo",
+    };
   }
-
-  return buildFallbackAdvice(profile, ctx);
+  const config = providerConfig || { id: "openai", apiKey: "", model: "gpt-4o-mini" };
+  return await generateWithAI(profile, ctx, config);
 }

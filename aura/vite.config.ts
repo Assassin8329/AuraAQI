@@ -18,4 +18,9 @@ export default defineConfig({
       },
     },
   },
+  // Expose DEMO_MODE to both Node and Vite client code
+  define: {
+    "process.env.DEMO_MODE": JSON.stringify(process.env.DEMO_MODE || ""),
+    "import.meta.env.VITE_DEMO_MODE": JSON.stringify(process.env.DEMO_MODE || ""),
+  },
 });
