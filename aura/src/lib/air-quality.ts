@@ -38,9 +38,10 @@ async function geocode(location: string) {
     language: "en",
     format: "json",
   });
-  const place = await fetchJson<GeocodeResult>(
+  const response = await fetchJson<{ results: GeocodeResult[] }>(
     `https://geocoding-api.open-meteo.com/v1/search?${params}`
   );
+  const place = response.results?.[0];
   if (!place || typeof place.latitude !== "number") {
     throw new Error(`Could not find a location matching "${location}".`);
   }
