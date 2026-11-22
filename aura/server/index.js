@@ -103,7 +103,7 @@ const PROVIDERS = {
   },
   google: {
     name: "Google Gemini",
-    defaultModel: "gemini-2.5-flash",
+    defaultModel: "gemini-3.8-flash",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
     authType: "google",
     supportsJsonFormat: true,

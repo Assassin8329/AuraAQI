@@ -3,9 +3,11 @@ import { cachedResponses, demoAqi } from "./demo-data";
 export type UserProfile = {
   name: string;
   location: string;
+  country?: string;
   lifestyle: "Budget" | "Time Availability";
   concern: "Health focus" | "Environmental focus";
   communicationStyle: "Direct" | "Detailed" | "Friendly";
+  language: "en" | "hi" | "es" | "fr" | "de" | "ja" | "ko" | "ar";
 };
 
 export type RiskBand = "good" | "moderate" | "unhealthy" | "hazardous";
@@ -261,7 +263,7 @@ function validateCards(value: unknown): AdviceCard[] {
 
   // Ensure we always have 3 cards
   const fallback = buildFallbackAdvice(
-    { name: "User", location: "City", lifestyle: "Budget", concern: "Health focus", communicationStyle: "Direct" },
+    { name: "User", location: "City", country: "World", lifestyle: "Budget", concern: "Health focus", communicationStyle: "Direct", language: "en" as const },
     { aqi: 100, riskBand: "moderate" },
   );
 
